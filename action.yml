@@ -1,0 +1,33 @@
+name: fast revert
+description: fast revert a pull request
+inputs:
+  pr:
+    required: true
+  co_authored_by:
+    required: true
+  committer_name:
+    required: true
+  committer_email:
+    required: true
+  token:
+    required: true
+runs:
+  using: composite
+  steps:
+  - name: revert
+    shell: bash
+    run: |
+      python3 -uS ${{ github.action_path }}/bin/revert \
+        --repo-id '${{ github.event.repository.id }}' \
+        --actor '${{ github.triggering_actor }}' \
+        --repo-dir . \
+        --pr "$PR" \
+        --co-authored-by "$CO_AUTHORED_BY" \
+        --committer-name "$COMMITTER_NAME" \
+        --committer-email "$COMMITTER_EMAIL"
+    env:
+      PR: ${{ inputs.pr }}
+      CO_AUTHORED_BY: ${{ inputs.co_authored_by }}
+      COMMITTER_NAME: ${{ inputs.committer_name }}
+      COMMITTER_EMAIL: ${{ inputs.committer_email }}
+      GITHUB_TOKEN: ${{ inputs.token }}

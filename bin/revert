@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import urllib.request
+
+
+def check_user_permissions(
+    *,
+    repo_id: int,
+    actor: str,
+    headers: dict[str, str],
+) -> None:
+    req = urllib.request.Request(
+        f'https://api.github.com/repositories/{repo_id}/collaborators/{actor}/permission',  # noqa: E501
+        headers=headers,
+    )
+    contents = json.load(urllib.request.urlopen(req, timeout=15))
+
+    if contents['permission'] not in {'admin', 'write'}:
+        raise SystemExit(
+            f'{actor} does not have write permission, '
+            f'only {contents["permission"]}',
+        )
+
+
+def get_merge_commit_sha(
+        *,
+        repo_id: int,
+        pr: int,
+        headers: dict[str, str],
+) -> str:
+    req = urllib.request.Request(
+        f'https://api.github.com/repositories/{repo_id}/pulls/{pr}',
+        headers=headers,
+    )
+    contents = json.load(urllib.request.urlopen(req, timeout=15))
+    sha = contents.get('merge_commit_sha')
+    if sha:
+        return sha
+    else:
+        raise SystemExit(f'could not find `merge_commit_sha` for PR {pr}?')
+
+
+def post_comment(
+        *,
+        repo_id: int,
+        pr: int,
+        revert_sha: str,
+        headers: dict[str, str],
+) -> None:
+    data = {'body': f'PR reverted: {revert_sha}'}
+    req = urllib.request.Request(
+        f'https://api.github.com/repositories/{repo_id}/issues/{pr}/comments',
+        method='POST',
+        headers=headers,
+        data=json.dumps(data).encode(),
+    )
+    urllib.request.urlopen(req, timeout=15)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--repo-id', type=int, required=True)
+    parser.add_argument('--actor', required=True)
+    parser.add_argument('--repo-dir', required=True)
+    parser.add_argument('--pr', type=int, required=True)
+    parser.add_argument('--co-authored-by', required=True)
+    parser.add_argument('--committer-name', required=True)
+    parser.add_argument('--committer-email', required=True)
+    parser.add_argument('--dry-run', action='store_true')
+    args = parser.parse_args()
+
+    headers = {'Authorization': f"token {os.environ['GITHUB_TOKEN']}"}
+    print('checking permissions...')
+    check_user_permissions(
+        repo_id=args.repo_id,
+        actor=args.actor, headers=headers,
+    )
+    print('figuring out what to revert...')
+    sha = get_merge_commit_sha(
+        repo_id=args.repo_id, pr=args.pr, headers=headers,
+    )
+    print(f'=> reverting pr #{args.pr} as {sha}')
+
+    print('reverting...')
+    git = (
+        'git',
+        '-c', 'protocol.version=2',
+        '-c', f'user.name={args.committer_name}',
+        '-c', f'user.email={args.committer_email}',
+        '-C', args.repo_dir,
+    )
+
+    # --depth=2 is needed so git can figure out how to revert the diff
+    subprocess.check_call((
+        *git, 'fetch', '--quiet', '--depth=2',
+        'origin', sha,
+    ))
+    subprocess.check_call((*git, 'revert', '--no-edit', sha))
+    # we want to add the triggering user info to the message
+    msg = subprocess.check_output((
+        *git, 'show', '--format=%B', '--no-patch',
+        'HEAD',
+    ))
+    subprocess.check_call((
+        *git, 'commit', '--amend', '--no-edit', '--quiet',
+        '--message', msg.decode(),
+        '--message', f'Co-authored-by: {args.co_authored_by}',
+    ))
+
+    print('pushing...')
+    if args.dry_run:
+        print('=> skipping push due to --dry-run')
+    else:
+        for _ in range(5):
+            try:
+                subprocess.check_call((
+                    *git, 'push', '--quiet',
+                    'origin', 'HEAD',
+                ))
+            except subprocess.CalledProcessError:
+                # possible we raced with some other patch
+                subprocess.check_call((
+                    *git, 'pull', '--rebase', '--no-edit',
+                    'origin', 'HEAD',
+                ))
+            else:
+                revert_sha = subprocess.check_output((
+                    *git, 'rev-parse', 'HEAD',
+                )).strip().decode()
+                break
+        else:
+            raise SystemExit('failed to push revert')
+
+    print('posting comment...')
+    if args.dry_run:
+        print('=> skipping PR comment due to --dry-run')
+    else:
+        post_comment(
+            repo_id=args.repo_id,
+            pr=args.pr,
+            revert_sha=revert_sha,
+            headers=headers,
+        )
+
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
