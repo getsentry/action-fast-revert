@@ -12,7 +12,7 @@ revert a PR directly on the primary branch
     - uses: actions/checkout@v3
       with:
         token: ${{ secrets.BOT_TOKEN }}
-    - uses: getsentry/action-fast-revert@v0.0.0
+    - uses: getsentry/action-fast-revert@v1.0.0
       with:
         pr: ${{ github.event.issue.number }}
         co_authored_by: ${{ github.event.sender.login }} <${{ github.event.sender.id }}+${{ github.event.sender.login }}@users.noreply.github.com>
