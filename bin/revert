@@ -8,25 +8,6 @@ import subprocess
 import urllib.request
 
 
-def check_user_permissions(
-    *,
-    repo_id: int,
-    actor: str,
-    headers: dict[str, str],
-) -> None:
-    req = urllib.request.Request(
-        f'https://api.github.com/repositories/{repo_id}/collaborators/{actor}/permission',  # noqa: E501
-        headers=headers,
-    )
-    contents = json.load(urllib.request.urlopen(req, timeout=15))
-
-    if contents['permission'] not in {'admin', 'write'}:
-        raise SystemExit(
-            f'{actor} does not have write permission, '
-            f'only {contents["permission"]}',
-        )
-
-
 def get_merge_commit_sha(
         *,
         repo_id: int,
@@ -65,7 +46,6 @@ def post_comment(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--repo-id', type=int, required=True)
-    parser.add_argument('--actor', required=True)
     parser.add_argument('--repo-dir', required=True)
     parser.add_argument('--pr', type=int, required=True)
     parser.add_argument('--co-authored-by', required=True)
@@ -75,11 +55,6 @@ def main() -> int:
     args = parser.parse_args()
 
     headers = {'Authorization': f"token {os.environ['GITHUB_TOKEN']}"}
-    print('checking permissions...')
-    check_user_permissions(
-        repo_id=args.repo_id,
-        actor=args.actor, headers=headers,
-    )
     print('figuring out what to revert...')
     sha = get_merge_commit_sha(
         repo_id=args.repo_id, pr=args.pr, headers=headers,
