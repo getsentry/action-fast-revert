@@ -19,7 +19,6 @@ runs:
     run: |
       python3 -uS ${{ github.action_path }}/bin/revert \
         --repo-id '${{ github.event.repository.id }}' \
-        --actor '${{ github.triggering_actor }}' \
         --repo-dir . \
         --pr "$PR" \
         --co-authored-by "$CO_AUTHORED_BY" \
