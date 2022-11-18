@@ -19,6 +19,14 @@ def get_merge_commit_sha(
         headers=headers,
     )
     contents = json.load(urllib.request.urlopen(req, timeout=15))
+
+    if not contents['merged']:
+        raise SystemExit(
+            '\n'
+            'pr is not merged!\n'
+            'instead run the action on the merged PR',
+        )
+
     sha = contents.get('merge_commit_sha')
     if sha:
         return sha
