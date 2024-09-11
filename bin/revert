@@ -41,7 +41,12 @@ def post_comment(
         revert_sha: str,
         headers: dict[str, str],
 ) -> None:
-    data = {'body': f'PR reverted: {revert_sha}'}
+    data = {
+        'body': (
+            f'PR reverted: {revert_sha}.\n\n'
+            f'Did you leave a comment describing why this PR was reverted?'
+        ),
+    }
     req = urllib.request.Request(
         f'https://api.github.com/repositories/{repo_id}/issues/{pr}/comments',
         method='POST',
